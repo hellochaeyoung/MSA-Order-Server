@@ -2,11 +2,14 @@ package com.msa.example.orderservice.controller;
 
 import com.msa.example.orderservice.dto.OrderDto;
 import com.msa.example.orderservice.jpa.OrderEntity;
+import com.msa.example.orderservice.messagequeue.KafkaProducer;
+import com.msa.example.orderservice.messagequeue.OrderProducer;
 import com.msa.example.orderservice.service.OrderService;
 import com.msa.example.orderservice.vo.RequestOrder;
 import com.msa.example.orderservice.vo.ResponseOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.modelmapper.convention.MatchingStrategies;
@@ -27,6 +30,8 @@ public class OrderController {
 
     private final Environment env;
     private final OrderService orderService;
+    private final KafkaProducer kafkaProducer;
+    private final OrderProducer orderProducer;
 
     @GetMapping("/health_check")
     public String status() {
@@ -39,10 +44,19 @@ public class OrderController {
         ModelMapper mapper = new ModelMapper();
         mapper.getConfiguration().setMatchingStrategy(MatchingStrategies.STRICT);
 
-        OrderDto dto = mapper.map(orderDetails, OrderDto.class);
+        OrderDto orderDto = mapper.map(orderDetails, OrderDto.class);
+        orderDto.setUserId(userId);
+        /* jpa */
+        /*OrderDto orderDto = orderService.createOrder(dto);
+        ResponseOrder responseOrder = mapper.map(orderDto, ResponseOrder.class);*/
 
-        dto.setUserId(userId);
-        OrderDto orderDto = orderService.createOrder(dto);
+        /* kafka */
+        orderDto.setOrderId(UUID.randomUUID().toString());
+        orderDto.setTotalPrice(orderDetails.getQty() * orderDetails.getUnitPrice());
+
+        /* send this order to the kafka */
+        kafkaProducer.send("example-catalog-topic", orderDto);
+        orderProducer.send("orders", orderDto);
 
         ResponseOrder responseOrder = mapper.map(orderDto, ResponseOrder.class);
 
